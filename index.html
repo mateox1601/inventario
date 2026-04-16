@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>App Inventario</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+  
+ 
+  /* Marca de agua sutil para el fondo del inventario */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background-image: url('https://www.dycingenieria.cl/assets/img/logo-dyc-2026.png');
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100%; /* Ajusta según el tamaño de tu pantalla */
+    opacity: 0.1; /* Muy importante para que no distraiga */
+    filter: grayscale(0%); /* Opcional: hace que el logo sea gris */
+  }
+
+  
+    :root { --bg-color: #f0f2f5; --brand-primary: #1e293b; --brand-accent: #2563eb; }
+    body { background-color: var(--bg-color); font-family: 'Segoe UI', system-ui, sans-serif; padding-bottom: 2rem; }
+    .navbar-custom { background-color: var(--brand-primary); padding: 12px 20px; color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .sticky-filters { position: sticky; top: 0; z-index: 1020; background: white; padding: 15px 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border-bottom: 1px solid #e2e8f0; }
+    .search-input { border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; }
+    .search-input:focus { border-color: var(--brand-accent); box-shadow: 0 0 0 0.2rem rgba(37,99,235,0.15); }
+    .product-card { border: none; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.04); margin-bottom: 15px; overflow: hidden; }
+    .card-marca-band { height: 4px; width: 100%; background: var(--brand-accent); }
+    .badge-stock { padding: 5px 12px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; }
+    .stock-ok { background-color: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+    .stock-alert { background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .loader-wrapper { height: 50vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+	
+	body {
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
+}
+/* Solo permitir selección en los inputs de búsqueda */
+input, select {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* ----  */
+body {
+  /* Evita que el usuario seleccione textos por error al tocar rápido */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Evita que la pantalla rebote al deslizar hacia arriba o abajo */
+  overscroll-behavior-y: contain;
+}
+input, select {
+  /* Permite la selección solo en los campos de texto y filtros */
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  </style>
+</head>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e293b">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+<body>
+
+  <div class="navbar-custom d-flex justify-content-between align-items-center">
+    <span class="fw-bold fs-5">
+	<img src="https://www.dycingenieria.cl/assets/img/logo-dyc-2026.png" width="10%">
+
+	
+	</i>Inventario D&C</span>
+    <button class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="cargarDatos()">
+      <i class="fas fa-sync-alt me-1"></i> Actualizar
+    </button>
+  </div>
+
+  <div class="sticky-filters">
+    <div class="input-group mb-2">
+      <span class="input-group-text bg-white border-end-0 text-muted"><i class="fas fa-search"></i></span>
+      <input type="text" id="bus-universal" class="form-control search-input border-start-0 ps-0" 
+             placeholder="Buscar ID, Descripción o Referencia..." oninput="filtrarDebounce()">
+    </div>
+    <div class="input-group">
+      <span class="input-group-text bg-light text-muted"><i class="fas fa-tag"></i></span>
+      <select id="filtro-marca" class="form-select search-input" onchange="aplicarFiltros()">
+        <option value="TODAS">Todas las Marcas</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="container mt-3">
+    <div id="loader" class="loader-wrapper">
+      <div class="spinner-border text-primary mb-3" role="status"></div>
+      <span class="text-muted fw-bold">Sincronizando con Servidor...</span>
+    </div>
+    <div id="error-msg" class="alert alert-danger mx-2" style="display: none;"></div>
+    <div id="lista-productos" class="px-1"></div>
+  </div>
+
+  <script>
+    // ====================================================================
+    // ⚙️ CONFIGURACIÓN DEL SERVIDOR (Pega aquí tu URL de Apps Script)
+    // ====================================================================
+    const URL_BASE = "https://script.google.com/macros/s/AKfycbwMShmxX_reytGhFSMS-wbtHxLa2zhVgiD8iJEGZjAeheViqbu0J_Ozc_-u-kUsim8l/exec";
+    const URL_API_GOOGLE = URL_BASE + "?api=inventario";
+
+    let BD_Inventario = [];
+    let timerBusqueda;
+
+    window.onload = cargarDatos;
+
+    async function cargarDatos() {
+      document.getElementById('loader').style.display = 'flex';
+      document.getElementById('lista-productos').innerHTML = '';
+      document.getElementById('error-msg').style.display = 'none';
+
+      try {
+        // Uso de fetch nativo en lugar de google.script.run
+        // No enviamos headers personalizados para evitar errores CORS de Google
+        const respuesta = await fetch(URL_API_GOOGLE, { method: 'GET' });
+        const res = await respuesta.json();
+
+        document.getElementById('loader').style.display = 'none';
+        
+        if (res.exito) {
+          BD_Inventario = res.productos;
+          
+          const selectMarca = document.getElementById('filtro-marca');
+          selectMarca.innerHTML = '<option value="TODAS">Todas las Marcas</option>';
+          res.marcas.forEach(marca => {
+            selectMarca.innerHTML += `<option value="${marca}">${marca}</option>`;
+          });
+
+          aplicarFiltros();
+        } else {
+          throw new Error(res.error || "Error desconocido en el servidor");
+        }
+      } catch (error) {
+        document.getElementById('loader').style.display = 'none';
+        const errorBox = document.getElementById('error-msg');
+        errorBox.innerHTML = `<i class="fas fa-wifi me-2"></i> Error de conexión: ${error.message}`;
+        errorBox.style.display = 'block';
+      }
+    }
+
+    function filtrarDebounce() {
+      clearTimeout(timerBusqueda);
+      timerBusqueda = setTimeout(aplicarFiltros, 300);
+    }
+
+    function aplicarFiltros() {
+      const texto = document.getElementById('bus-universal').value.toLowerCase().trim();
+      const marcaFiltrada = document.getElementById('filtro-marca').value;
+
+      const resultados = BD_Inventario.filter(prod => {
+        const coincideTexto = String(prod.id).toLowerCase().includes(texto) || 
+                              prod.desc.toLowerCase().includes(texto) || 
+                              String(prod.ref).toLowerCase().includes(texto);
+        const coincideMarca = (marcaFiltrada === "TODAS") || (prod.marca === marcaFiltrada);
+        return coincideTexto && coincideMarca;
+      });
+
+      renderizar(resultados);
+    }
+
+    function renderizar(datos) {
+      const contenedor = document.getElementById('lista-productos');
+      if (datos.length === 0) {
+        contenedor.innerHTML = `<div class="text-center mt-5 text-muted"><i class="fas fa-search fa-3x mb-3 opacity-50"></i><h5>Sin resultados</h5></div>`;
+        return;
+      }
+
+      let html = '';
+      datos.forEach(p => {
+        const isCritico = p.stock <= 5;
+        const claseStock = isCritico ? 'stock-alert' : 'stock-ok';
+        
+        html += `
+          <div class="card product-card">
+            <div class="card-marca-band"></div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between text-muted" style="font-size: 0.8rem;">
+                <span class="fw-bold">ID: ${p.id}</span>
+                <span>Ref: ${p.ref}</span>
+              </div>
+              <h6 class="mt-1 mb-1 fw-bold text-dark">${p.desc}</h6>
+              <div class="d-flex justify-content-between align-items-end mt-2">
+                <div style="font-size: 0.85rem; color: #64748b;">
+                  <div><i class="fas fa-tag me-1"></i>${p.marca}</div>
+                  <div><i class="fas fa-map-marker-alt me-1"></i>${p.ubica || '-'}</div>
+                </div>
+                <div class="text-end">
+                  <div class="badge-stock ${claseStock} mb-1">${p.stock} Und.</div>
+                  <div class="fw-bold text-primary" style="font-size: 1.1rem;">$${Number(p.precio).toLocaleString('es-CL')}</div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      });
+      contenedor.innerHTML = html;
+    }
+	
+	
+	//** Funciones para el back */
+	/*
+	// --- 1. ENRUTADOR PRINCIPAL (Modificado para Cliente-Servidor) ---
+function doGet(e) {
+  // A. Si recibe la petición de la App Móvil Independiente (API)
+  if (e.parameter.api === 'inventario') {
+    const respuesta = apiObtenerInventarioMovil();
+    
+    // Retornamos JSON puro, habilitando la arquitectura Cliente-Servidor
+    return ContentService.createTextOutput(JSON.stringify(respuesta))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // B. Si no hay parámetros, carga el ERP de escritorio normal (V14)
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('ERP Master V14')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+// --- 2. LÓGICA DE EXTRACCIÓN (Se mantiene casi intacta) ---
+function apiObtenerInventarioMovil() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet(); // Usamos método nativo por seguridad en API
+    const sheetInv = ss.getSheetByName('Inventario');
+    
+    if (!sheetInv) throw new Error("La hoja 'Inventario' no existe.");
+
+    const datos = sheetInv.getDataRange().getValues();
+    const marcasUnicas = new Set();
+    const productos = [];
+
+    for (let i = 1; i < datos.length; i++) {
+      const row = datos[i];
+      if (!row[0]) continue; 
+
+      const marca = row[2] ? String(row[2]).trim() : "Generico";
+      marcasUnicas.add(marca);
+
+      productos.push({
+        id: row[0],
+        desc: row[1],
+        marca: marca,
+        ref: row[3],
+        ubica: row[4],
+        precio: row[6],
+        stock: row[7]
+      });
+    }
+
+    return { exito: true, productos: productos, marcas: Array.from(marcasUnicas).sort() };
+  } catch (error) {
+    return { exito: false, error: error.message };
+  }
+}
+	*/
+	
+	// Registro del Service Worker para habilitar la PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(registro => {
+          console.log('PWA lista: Service Worker registrado.', registro.scope);
+        })
+        .catch(error => {
+          console.error('Fallo al registrar la PWA:', error);
+        });
+    });
+  }
+	
+  </script>
+</body>
+</html>
